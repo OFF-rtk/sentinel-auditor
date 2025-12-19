@@ -1,0 +1,10 @@
+Faker==39.0.0
+tzdata==2025.3
+supabase
+langchain
+langchain-community
+langchain-core
+langchain-google-genai
+langchain-groq
+python-dotenv
+tqdm
