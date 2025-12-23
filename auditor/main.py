@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
 from dotenv import load_dotenv
 
-from sentinel_agent import brain_architect, brain_critique, brain_assembler
+from agents import brain_triage, brain_intel, brain_judge
 
 load_dotenv()
 
@@ -18,14 +18,14 @@ async def process_audit_log(log_entry: dict):
     user_id = log_entry.get("actor", {}).get("user_id", "unknown")
     print(f"\n [Webhook Recieved] Analyzing User: {user_id}...")
 
-    plan = brain_architect(log_entry)
+    plan = brain_triage(log_entry)
     if plan["status"] == "SAFE":
         print(f" {user_id} is SAFE. (Architect cleared it)")
         return
 
-    policies = brain_critique(plan["search_terms"])
+    policies = brain_intel(plan["search_terms"])
 
-    decision = brain_assembler(log_entry, policies)
+    decision = brain_judge(log_entry, policies)
 
     if decision["decision"] == "BLOCK":
         print(f" BLOCKING User {user_id}!")
