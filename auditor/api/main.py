@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
 from dotenv import load_dotenv
 
-from agents import brain_triage, brain_intel, brain_judge
+from agents import brain_triage, brain_intel, brain_judge, check_rate_limit, is_user_blacklisted, block_user_session
 
 load_dotenv()
 
@@ -18,6 +18,14 @@ async def process_audit_log(log_entry: dict):
     user_id = log_entry.get("actor", {}).get("user_id", "unknown")
     print(f"\n [Webhook Recieved] Analyzing User: {user_id}...")
 
+    if not check_rate_limit(user_id, limit=5, window=60):
+        print(f" RATE LIMITER: Traffic throttled for {user_id}.")
+        return
+
+    if is_user_blacklisted(user_id):
+        print(f" SHIELD: User {user_id} is blacklisted. Request dropped.")
+        return
+
     plan = brain_triage(log_entry)
     if plan["status"] == "SAFE":
         print(f" {user_id} is SAFE. (Architect cleared it)")
@@ -27,12 +35,11 @@ async def process_audit_log(log_entry: dict):
 
     decision = brain_judge(log_entry, policies)
 
+    print(f" FINAL DECISION: {decision['decision']}")
+    print(f" REASON: {decision.get('reasoning', 'No Reasoning Provided')}")
+
     if decision["decision"] == "BLOCK":
-        print(f" BLOCKING User {user_id}!")
-        print(f" Reason: {decision['reasoning']}")
-
-        print(f" [SUPABASE API] Session Terminated for {user_id}")
-
+        block_user_session(user_id, decision.get('reasoning', 'Blocked by Sentinel'))
     else:
         print(f" ALLOWING User {user_id}. False Positive dismissed.")
 
