@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient"
 import LogFeed from "@/components/dashboard/LogFeed";
 
@@ -70,7 +72,7 @@ export type LogEntry = {
 };
 
 export default function Home() {
-
+  const router = useRouter();
   const [logsMap, setLogsMap] = useState<Map<string, LogEntry>>(new Map());
 
   const logs = useMemo(() => {
@@ -78,6 +80,12 @@ export default function Home() {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     ).slice(0, 25);
   }, [logsMap]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   useEffect(() => {
     const fetchInitial = async () => {
@@ -134,7 +142,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold tracking-tighter text-white">SENTINEL <span className="text-green-500">AUDITOR</span></h1>
           <p className="text-xs text-zinc-500">REAL-TIME THREAT MONITORING // V1.0</p>
         </div>
-        <div className="flex gap-4 text-xs">
+        <div className="flex gap-4 text-xs items-center">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
             SYSTEM ONLINE
@@ -143,8 +151,17 @@ export default function Home() {
             <span className="text-zinc-500">ACTIVE THREATS:</span>
             <span className="text-red-500 font-bold">{activeThreats}</span>
           </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-zinc-700 hover:border-red-500/50 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-all cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>SIGN OUT</span>
+          </button>
         </div>
       </header>
+
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-0 relative min-h-0">
 
