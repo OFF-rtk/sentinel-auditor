@@ -12,7 +12,10 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for layer caching
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install CPU-only PyTorch first (avoids ~1.2GB of CUDA/nvidia packages)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code

@@ -7,7 +7,11 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Header
 from dotenv import load_dotenv
 from typing import Optional
 
-from agents import brain_triage, brain_intel, brain_judge, check_rate_limit, is_user_blacklisted, block_user_session
+from agents import (
+    brain_triage, brain_intel, brain_judge,
+    check_rate_limit, is_user_blacklisted,
+    confirm_block, unblock_user, send_pardon_email,
+)
 from agents.utils import log_trace
 
 load_dotenv()
@@ -130,17 +134,39 @@ async def process_audit_log(log_entry: dict):
         return
 
     if decision["decision"] == "BLOCK":
-        log_trace(event_id, "ENFORCER", "THINKING", {"msg": "Initiating Kill Switch..."})
+        log_trace(event_id, "ENFORCER", "THINKING", {"msg": "Confirming block — escalating strikes..."})
 
-        success = block_user_session(user_id, decision.get('reasoning', 'Blocked by Sentinel'))
+        success = confirm_block(user_id, decision.get('reasoning', 'Blocked by Sentinel'))
 
         if success:
-            log_trace(event_id, "ENFORCER", "COMPLETED", {"action": "SESSION_TERMINATED", "redis_key": f"blacklist:{user_id}"})
+            log_trace(event_id, "ENFORCER", "BLOCK_CONFIRMED", {
+                "action": "STRIKE_ESCALATED",
+                "redis_key": f"blacklist:{user_id}",
+                "reasoning": decision.get("reasoning"),
+            })
         else:
-            log_trace(event_id, "ENFORCER", "FAILED", {"error": "Redis Connection Failed"})
+            log_trace(event_id, "ENFORCER", "FAILED", {"error": "Shared Redis unavailable"})
     else:
-        log_trace(event_id, "ENFORCER", "IDLE", {"msg": "User Allowed. No Action Taken."})
-        print(f" ALLOWING User {user_id}. False Positive dismissed.")
+        # Check if the original sentinel-ml decision was BLOCK
+        # If so, the judge is overriding a BLOCK → false positive pardon
+        sentinel_decision = log_entry.get("sentinel_analysis", {}).get("decision")
+
+        if sentinel_decision == "BLOCK":
+            log_trace(event_id, "ENFORCER", "FALSE_POSITIVE_PARDONED", {
+                "msg": f"Judge overrode sentinel BLOCK → ALLOW for {user_id}",
+                "reasoning": decision.get("reasoning"),
+            })
+            unblock_user(user_id)
+
+            # Attempt pardon email (best-effort, needs user email)
+            user_email = log_entry.get("actor", {}).get("email")
+            if user_email:
+                send_pardon_email(user_email, decision.get("reasoning", "False positive"))
+
+            print(f" PARDONED: User {user_id} unblocked (false positive).")
+        else:
+            log_trace(event_id, "ENFORCER", "IDLE", {"msg": "User Allowed. No action taken."})
+            print(f" ALLOWING User {user_id}. No enforcement needed.")
 
 
 @app.get("/")
