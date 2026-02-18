@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Header
+from fastapi.middleware.cors import CORSMiddleware # <--- Added Import
 from dotenv import load_dotenv
 from typing import Optional
 
@@ -17,6 +18,25 @@ from agents.utils import log_trace
 load_dotenv()
 
 app = FastAPI()
+
+# --- CORS CONFIGURATION START ---
+# Read the allowed origin from environment variables
+dashboard_url = os.getenv("DASHBOARD_URL", "")
+
+# Create a list of origins. 
+# This handles single URLs or comma-separated lists (e.g. "https://myapp.vercel.app,http://localhost:3000")
+origins = [url.strip() for url in dashboard_url.split(",")] if dashboard_url else ["*"]
+
+print(f" SECURITY: CORS allowed origins: {origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# --- CORS CONFIGURATION END ---
 
 # Supabase Webhook Secret for verifying requests
 SUPABASE_WEBHOOK_SECRET = os.getenv("SUPABASE_WEBHOOK_SECRET")
@@ -235,4 +255,4 @@ async def recieve_audit_log(
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
