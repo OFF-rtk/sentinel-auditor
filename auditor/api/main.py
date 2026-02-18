@@ -165,7 +165,7 @@ async def process_audit_log(log_entry: dict):
                 "reasoning": decision.get("reasoning"),
             })
         else:
-            log_trace(event_id, "ENFORCER", "FAILED", {"error": "Shared Redis unavailable"})
+            log_trace(event_id, "ENFORCER", "FAILED", {"error": "Redis unavailable"})
     else:
         # Check if the original sentinel-ml decision was BLOCK
         # If so, the judge is overriding a BLOCK → false positive pardon

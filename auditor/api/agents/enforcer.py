@@ -1,9 +1,13 @@
 """
 Sentinel Auditor — Enforcer Module
 
-Dual-Redis pattern:
-  - r_shared (Upstash via REDIS_URL)  → blacklist:*, global_strikes:*
-  - r_local  (Docker via REDIS_HOST)  → rate limiting only
+Single-Redis pattern (Upstash via REDIS_URL):
+  Global keys (shared with sentinel-ml, no prefix):
+    blacklist:{user_id}       → ban reason string (TTL-based)
+    global_strikes:{user_id}  → strike counter (7-day TTL)
+
+  Auditor-local keys (prefixed to avoid collisions):
+    auditor:rate_limit:{user_id} → request counter (sliding window)
 
 Strike Escalation:
   Strike 1-2  → 1-hour ban   (TTL 3600s)
@@ -19,25 +23,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Key prefix — only for auditor-local keys (rate limiting)
+LOCAL_PREFIX = "auditor:"
+
 # ---------------------------------------------------------------------------
-# Redis Connections
+# Redis Connection (single Upstash instance)
 # ---------------------------------------------------------------------------
 
-# Shared Upstash Redis — enforcement (blacklist, strikes)
 REDIS_URL = os.getenv("REDIS_URL")
 if REDIS_URL:
-    r_shared = redis.from_url(REDIS_URL, decode_responses=True)
+    r = redis.from_url(REDIS_URL, decode_responses=True)
 else:
-    print("⚠ REDIS_URL not set — enforcement disabled, falling back to local")
-    r_shared = None
-
-# Local Docker Redis — rate limiting only
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-try:
-    r_local = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-except Exception:
-    r_local = None
+    print("⚠ REDIS_URL not set — enforcement and rate limiting disabled")
+    r = None
 
 # SMTP config (optional — for pardon emails)
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -50,27 +48,27 @@ STRIKES_TTL = 604800
 
 
 # ---------------------------------------------------------------------------
-# Shield — Blacklist Check (reads from shared Upstash)
+# Shield — Blacklist Check
 # ---------------------------------------------------------------------------
 
 def is_user_blacklisted(user_id: str) -> bool:
-    """Check if a user is currently banned in shared Redis."""
-    if not r_shared:
+    """Check if a user is currently banned."""
+    if not r:
         return False
     try:
-        return r_shared.exists(f"blacklist:{user_id}") > 0
+        return r.exists(f"blacklist:{user_id}") > 0
     except redis.ConnectionError:
-        print(" ⚠ Shared Redis offline: Skipping blacklist check.")
+        print(" ⚠ Redis offline: Skipping blacklist check.")
         return False
 
 
 # ---------------------------------------------------------------------------
-# Rate Limiter (uses local Docker Redis)
+# Rate Limiter
 # ---------------------------------------------------------------------------
 
 def check_rate_limit(user_id: str, limit: int = 10, window: int = 60) -> bool:
     """
-    Sliding-window rate limiter on local Redis.
+    Sliding-window rate limiter.
 
     Args:
         user_id: The actor's ID.
@@ -80,11 +78,10 @@ def check_rate_limit(user_id: str, limit: int = 10, window: int = 60) -> bool:
     Returns:
         True if allowed, False if limit exceeded.
     """
-    r = r_local or r_shared
     if not r:
         return True
 
-    key = f"rate_limit:{user_id}"
+    key = f"{LOCAL_PREFIX}rate_limit:{user_id}"
 
     try:
         current_count = r.incr(key)
@@ -105,10 +102,10 @@ def check_rate_limit(user_id: str, limit: int = 10, window: int = 60) -> bool:
 
 def get_strike_count(user_id: str) -> int:
     """Get the current global strike count for a user."""
-    if not r_shared:
+    if not r:
         return 0
     try:
-        count = r_shared.get(f"global_strikes:{user_id}")
+        count = r.get(f"global_strikes:{user_id}")
         return int(count) if count else 0
     except Exception as e:
         print(f" Strike count read error: {e}")
@@ -124,16 +121,16 @@ def confirm_block(user_id: str, reason: str = "Policy Violation") -> bool:
        - Strikes 1-2:  1 hour  (3600s)
        - Strikes 3+:   24 hours (86400s)
     """
-    if not r_shared:
-        print(" ⚠ Shared Redis unavailable — cannot enforce block.")
+    if not r:
+        print(" ⚠ Redis unavailable — cannot enforce block.")
         return False
 
     try:
         print(f" ENFORCER: Confirming block for {user_id}...")
 
         # Increment strikes (persistent counter with 7-day TTL)
-        strikes = r_shared.incr(f"global_strikes:{user_id}")
-        r_shared.expire(f"global_strikes:{user_id}", STRIKES_TTL)
+        strikes = r.incr(f"global_strikes:{user_id}")
+        r.expire(f"global_strikes:{user_id}", STRIKES_TTL)
 
         # Determine ban duration
         if strikes >= 3:
@@ -146,7 +143,7 @@ def confirm_block(user_id: str, reason: str = "Policy Violation") -> bool:
             print(f" ENFORCER: Strike {strikes} — STANDARD BAN (1h)")
 
         # Overwrite any existing ban (provisional or otherwise)
-        r_shared.setex(f"blacklist:{user_id}", ban_ttl, ban_reason)
+        r.setex(f"blacklist:{user_id}", ban_ttl, ban_reason)
 
         return True
 
@@ -164,11 +161,11 @@ def unblock_user(user_id: str) -> bool:
     Remove a blacklist entry (false positive pardon).
     Called when the auditor's judge overrides a BLOCK to ALLOW.
     """
-    if not r_shared:
+    if not r:
         return False
 
     try:
-        deleted = r_shared.delete(f"blacklist:{user_id}")
+        deleted = r.delete(f"blacklist:{user_id}")
         if deleted:
             print(f" ENFORCER: Pardoned {user_id} — blacklist entry removed.")
         else:
