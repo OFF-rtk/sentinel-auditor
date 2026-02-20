@@ -58,20 +58,23 @@ export default function MetadataPanel({ log }: { log: any }) {
                         <label className="text-[10px] text-zinc-600 block mb-1">IP Address</label>
                         <div className="flex items-center justify-between p-2 bg-zinc-900 rounded border border-zinc-800">
                             <span className="text-xs text-blue-400 font-mono">{network_context?.ip_address}</span>
-                            {network_context?.ip_reputation && (
-                                <span className="text-[9px] text-red-400 bg-red-900/20 px-1 rounded border border-red-900/50 uppercase">
-                                    {network_context.ip_reputation}
-                                </span>
-                            )}
                         </div>
                     </div>
 
-                    {/* Device Hash */}
+                    {/* Device ID */}
                     <div>
-                        <label className="text-[10px] text-zinc-600 block mb-1">JA3 Hash</label>
+                        <label className="text-[10px] text-zinc-600 block mb-1">Device ID</label>
                         <div className="text-[10px] text-zinc-500 font-mono break-all bg-zinc-900/30 p-1 rounded border border-zinc-800/50">
                             <Fingerprint size={10} className="inline mr-1 text-zinc-600" />
-                            {network_context?.client_fingerprint?.ja3_hash || "N/A"}
+                            {network_context?.client_fingerprint?.device_id || "N/A"}
+                        </div>
+                    </div>
+
+                    {/* User Agent */}
+                    <div>
+                        <label className="text-[10px] text-zinc-600 block mb-1">User Agent</label>
+                        <div className="text-[10px] text-zinc-500 font-mono break-all bg-zinc-900/30 p-1 rounded border border-zinc-800/50">
+                            {network_context?.client_fingerprint?.user_agent || "N/A"}
                         </div>
                     </div>
                 </div>

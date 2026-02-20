@@ -43,11 +43,11 @@ export type LogPayload = {
       asn?: string;
       city?: string;
       country: string;
+      lat?: number | null;
+      lng?: number | null;
     };
-    ip_reputation?: string;
     client_fingerprint?: {
-      ja3_hash?: string;
-      user_agent_raw?: string;
+      user_agent?: string;
       device_id?: string;
     };
   };

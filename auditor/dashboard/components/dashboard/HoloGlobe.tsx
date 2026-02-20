@@ -6,17 +6,6 @@ import { LogEntry } from "@/app/page";
 
 const SENTINEL_HQ = { lat: 28.6139, lng: 77.2090, name: "HQ", color: "#00ff41", size: 1.2 };
 
-const COUNTRY_COORDS: Record<string, { lat: number; lng: number }> = {
-  "US": { lat: 37.0902, lng: -95.7129 },
-  "DE": { lat: 51.1657, lng: 10.4515 }, // Germany
-  "GB": { lat: 55.3781, lng: -3.4360 }, // UK
-  "IN": { lat: 20.5937, lng: 78.9629 }, // India
-  "RU": { lat: 61.5240, lng: 105.3188 }, // Russia
-  "KP": { lat: 40.3399, lng: 127.5101 }, // North Korea
-  "CN": { lat: 35.8617, lng: 104.1954 }, // China
-  "BR": { lat: -14.2350, lng: -51.9253 }, // Brazil
-};
-
 export default function HoloGlobe({ logs }: { logs: LogEntry[] }) {
   const globeEl = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
@@ -43,22 +32,24 @@ export default function HoloGlobe({ logs }: { logs: LogEntry[] }) {
 
 
   const { points, arcs } = useMemo(() => {
+    // Use lat/lng directly from audit log geo_location (populated by GeoLite2)
     const validLogs = logs.filter(l => {
-      const code = l.payload.network_context?.geo_location?.country;
-      return code && COUNTRY_COORDS[code];
-    })
-    const mappedPoints = validLogs.map(log => {
-      const countryCode = log.payload.network_context!.geo_location!.country;
-      const coords = COUNTRY_COORDS[countryCode];
+      const geo = l.payload.network_context?.geo_location;
+      return geo && geo.lat != null && geo.lng != null;
+    });
 
+    const mappedPoints = validLogs.map(log => {
+      const geo = log.payload.network_context!.geo_location!;
       const isRisk = (log.payload.sentinel_analysis?.risk_score || 0) > 0.5;
+      const country = geo.country || "??";
+      const city = geo.city || "";
 
       return {
-        lat: coords.lat,
-        lng: coords.lng,
-        name: countryCode,
+        lat: geo.lat,
+        lng: geo.lng,
+        name: city ? `${city}, ${country}` : country,
         color: isRisk ? "#ef4444" : "#22c55e",
-        size: 0.5
+        size: 0.5,
       };
     });
 
@@ -70,7 +61,7 @@ export default function HoloGlobe({ logs }: { logs: LogEntry[] }) {
       endLat: SENTINEL_HQ.lat,
       endLng: SENTINEL_HQ.lng,
       color: pt.color,
-      name: `${pt.name} -> HQ`
+      name: `${pt.name} → HQ`
     }));
 
     return { points: allPoints, arcs: mappedArcs };
