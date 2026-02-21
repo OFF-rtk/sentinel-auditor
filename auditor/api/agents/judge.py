@@ -49,6 +49,8 @@ def brain_judge(log_entry: dict, policies: list):
     - decision: "BLOCK" or "ALLOW"
     - confidence: An integer 0-100
     - reasoning: One short sentence.
+
+    RESPOND WITH ONLY THE JSON OBJECT. NO text before or after. NO explanations. NO markdown.
     """)
 
     chain = junior_prompt | llm_junior | JsonOutputParser()
@@ -95,18 +97,35 @@ def brain_judge(log_entry: dict, policies: list):
     Analyse the nuance. Is this a false positive? Is this a sophisticated attack?
     Consider ALL anomaly vectors together — multiple weak signals can indicate a bot.
 
-    Return a JSON with EXACTLY these keys:
-    - decision: "BLOCK", "CHALLENGE", or "ALLOW"
-    - reasoning: A detailed explanation citing the policy Id.
-    - confidence: An integer 0-100
+    RESPOND WITH ONLY A JSON OBJECT. NO text before or after. NO explanations. NO markdown.
+    The JSON must have EXACTLY these keys:
+    {{"decision": "BLOCK" or "ALLOW", "reasoning": "one sentence citing policy", "confidence": 0-100}}
     """)
 
     chain_senior = senior_prompt | llm_senior | JsonOutputParser()
-    final_verdict = chain_senior.invoke({
-        "log": json.dumps(log_entry),
-        "policies": context_str,
-        "junior_opinion": verdict["reasoning"]
-    })
+
+    try:
+        final_verdict = chain_senior.invoke({
+            "log": json.dumps(log_entry),
+            "policies": context_str,
+            "junior_opinion": verdict["reasoning"]
+        })
+    except Exception as parse_err:
+        # Fallback: extract decision from the raw text if JSON parse fails
+        import re
+        raw = str(parse_err)
+        print(f" CISO JSON parse failed — extracting from raw output...")
+
+        decision_match = re.search(r'(?:decision|Decision)[:\s]*"?(BLOCK|ALLOW|CHALLENGE)"?', raw, re.IGNORECASE)
+        confidence_match = re.search(r'(?:confidence|Confidence)[:\s]*(\d+)', raw, re.IGNORECASE)
+        reasoning_match = re.search(r'(?:reasoning|Reasoning)[:\s]*"([^"]+)"', raw, re.IGNORECASE)
+
+        final_verdict = {
+            "decision": decision_match.group(1).upper() if decision_match else "BLOCK",
+            "confidence": int(confidence_match.group(1)) if confidence_match else 80,
+            "reasoning": reasoning_match.group(1) if reasoning_match else "CISO analysis inconclusive — defaulting to BLOCK based on anomaly evidence",
+        }
+        print(f" Fallback verdict: {final_verdict}")
 
     # Normalize keys — LLMs sometimes use alternate names
     if "verdict" in final_verdict and "decision" not in final_verdict:
