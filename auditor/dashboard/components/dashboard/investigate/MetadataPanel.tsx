@@ -48,9 +48,6 @@ export default function MetadataPanel({ log }: { log: any }) {
                             <MapPin size={14} className="text-zinc-500" />
                             {network_context?.geo_location?.city}, {network_context?.geo_location?.country}
                         </div>
-                        <div className="text-[10px] text-zinc-600 pl-6 mt-0.5 font-mono truncate">
-                            {network_context?.geo_location?.asn}
-                        </div>
                     </div>
 
                     {/* IP Address */}
