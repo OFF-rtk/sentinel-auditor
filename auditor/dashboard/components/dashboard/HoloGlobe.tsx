@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import Globe from "react-globe.gl";
 import { LogEntry } from "@/app/page";
 
-const SENTINEL_HQ = { lat: 28.6139, lng: 77.2090, name: "HQ", color: "#00ff41", size: 1.2 };
+const SENTINEL_HQ = { lat: 19.0760, lng: 72.8777, name: "HQ", color: "#00ff41", size: 1.2 };
 
 export default function HoloGlobe({ logs }: { logs: LogEntry[] }) {
   const globeEl = useRef<any>(null);

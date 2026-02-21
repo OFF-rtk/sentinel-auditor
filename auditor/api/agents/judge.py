@@ -95,9 +95,9 @@ def brain_judge(log_entry: dict, policies: list):
     Analyse the nuance. Is this a false positive? Is this a sophisticated attack?
     Consider ALL anomaly vectors together — multiple weak signals can indicate a bot.
 
-    Return a JSON with:
-    - decision: "BLOCK" or "ALLOW"
-    - reason: A detailed explanation citing the policy Id.
+    Return a JSON with EXACTLY these keys:
+    - decision: "BLOCK", "CHALLENGE", or "ALLOW"
+    - reasoning: A detailed explanation citing the policy Id.
     - confidence: An integer 0-100
     """)
 
@@ -107,6 +107,14 @@ def brain_judge(log_entry: dict, policies: list):
         "policies": context_str,
         "junior_opinion": verdict["reasoning"]
     })
+
+    # Normalize keys — LLMs sometimes use alternate names
+    if "verdict" in final_verdict and "decision" not in final_verdict:
+        final_verdict["decision"] = final_verdict.pop("verdict")
+    if "reason" in final_verdict and "reasoning" not in final_verdict:
+        final_verdict["reasoning"] = final_verdict.pop("reason")
+    if "reasoning" not in final_verdict or not final_verdict["reasoning"]:
+        final_verdict["reasoning"] = f"CISO verdict: {final_verdict.get('decision', 'BLOCK')} with confidence {final_verdict.get('confidence', 0)}%"
 
     final_verdict["model_used"] = "CISO"
 
