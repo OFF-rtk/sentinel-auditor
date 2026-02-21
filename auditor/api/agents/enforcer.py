@@ -62,6 +62,16 @@ def is_user_blacklisted(user_id: str) -> bool:
         return False
 
 
+def get_ban_reason(user_id: str) -> str | None:
+    """Get the ban reason string for a blacklisted user."""
+    if not r:
+        return None
+    try:
+        return r.get(f"blacklist:{user_id}")
+    except redis.ConnectionError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Rate Limiter
 # ---------------------------------------------------------------------------

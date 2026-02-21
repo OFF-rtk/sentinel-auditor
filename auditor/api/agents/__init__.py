@@ -4,6 +4,7 @@ from .judge import brain_judge
 from .utils import supabase
 from .enforcer import (
     is_user_blacklisted,
+    get_ban_reason,
     check_rate_limit,
     confirm_block,
     unblock_user,

@@ -10,7 +10,7 @@ from typing import Optional
 
 from agents import (
     brain_triage, brain_intel, brain_judge,
-    check_rate_limit, is_user_blacklisted,
+    check_rate_limit, is_user_blacklisted, get_ban_reason,
     confirm_block, unblock_user, send_pardon_email,
 )
 from agents.utils import log_trace
@@ -90,9 +90,16 @@ async def process_audit_log(log_entry: dict):
         return
 
     if is_user_blacklisted(user_id):
-        log_trace(event_id, "ENFORCER", "BLOCKED", {"reason": "User Blacklisted"})
-        print(f" SHIELD: User {user_id} is blacklisted. Request dropped.")
-        return
+        # Only short-circuit on CONFIRMED bans (auditor-set).
+        # Provisional bans (sentinel-ml 5-min) must still go through
+        # the full pipeline so confirm_block() can escalate to a real ban.
+        ban_reason = get_ban_reason(user_id)
+        if ban_reason and not ban_reason.startswith("provisional_"):
+            log_trace(event_id, "ENFORCER", "BLOCKED", {"reason": "User Blacklisted (confirmed)"})
+            print(f" SHIELD: User {user_id} is blacklisted (confirmed ban). Request dropped.")
+            return
+        else:
+            print(f" SHIELD: User {user_id} has provisional ban — processing for escalation...")
 
     log_trace(event_id, "TRIAGE", "THINKING", {"msg": "Analyzing intent..."})
 
