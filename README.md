@@ -1,6 +1,6 @@
 # Sentinel Auditor
 
-**AI-Powered Transaction Auditing for Behavioral Security**
+**Agentic Transaction Auditing for Behavioral Security**
 
 Sentinel Auditor is the investigation and compliance layer of the Sentinel ecosystem. It intercepts flagged transactions from the Vault Treasury pipeline, runs them through a hierarchical LLM reasoning chain (routing between fast and reasoning models), and produces auditable investigation traces — replacing static fraud rules with semantic policy evaluation.
 
@@ -27,5 +27,5 @@ docker-compose up --build
 
 ## Related Repositories
 
-- [**Sentinel ML**](https://github.com/OFF-rtk/sentinel-ml) — Behavioral biometric engine (keystroke dynamics, mouse physics, trust scoring)
+- [**Sentinel ML**](https://github.com/OFF-rtk/sentinel-core) — Behavioral biometric engine (keystroke dynamics, mouse physics, trust scoring)
 - [**Vault Treasury**](https://github.com/OFF-rtk/vault-treasury) — Treasury management platform protected by Sentinel
