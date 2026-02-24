@@ -80,7 +80,7 @@ flowchart LR
 | **Intel** | MiniLM (Local) | Performs semantic search against policy database via pgvector. | **Privacy & Speed**: Embeddings generated locally within the container; no external API calls. |
 | **Judge** | Llama 3.1 8B (Groq) | Makes initial ALLOW/BLOCK decisions based on policies. | **Cost Efficiency**: Handles 90% of traffic using a smaller, cheaper model. |
 | **CISO** | Llama 3.3 70B (Groq) | Escalation path when Judge confidence is <90%. | **High Fidelity**: Reserves expensive SOTA reasoning only for complex edge cases. |
-| **Enforcer**| Redis | Executes kill switches and manages blacklists. | **Distributed State**: Persists ban decisions instantly across all API instances. |
+| **Enforcer**| Redis | Strike escalation, blacklisting, and false-positive pardons. Provisional bans (5 min, set by Sentinel ML) are escalated to confirmed bans (1h for strikes 1–2, 24h for strike 3+) with a 7-day strike window. | **Distributed State**: Shared `blacklist:{user_id}` and `global_strikes:{user_id}` keys are readable by all services on the same Upstash instance. |
 
 ## Core Features
 
@@ -89,10 +89,12 @@ flowchart LR
 - Dual validation support (secret header + cryptographic signature)
 - Request rejection without valid credentials
 
-### Distributed State Management
-- Redis-backed rate limiting (sliding window, configurable per-user)
-- 24-hour blacklist persistence with automatic TTL expiry
-- Session termination via key deletion
+### Enforcement & Strike System
+- **Provisional → Confirmed ban pipeline**: Sentinel ML sets a 5-minute provisional ban on BLOCK. When the audit log webhook fires, the auditor's agent pipeline reviews the event. If it confirms BLOCK, the Enforcer escalates to a confirmed ban that overwrites the provisional TTL.
+- **Strike escalation**: Strikes 1–2 → 1-hour ban (TTL 3600s). Strike 3+ → 24-hour ban (TTL 86400s). Strike counter persists for 7 days.
+- **False-positive pardons**: If the Judge/CISO overrides a BLOCK to ALLOW, the Enforcer deletes the `blacklist:{user_id}` key and optionally sends a pardon email via SMTP.
+- **Rate limiting**: Redis-backed sliding window (5 requests/60s per user, prefixed `auditor:rate_limit:`).
+- **Shared keyspace**: `blacklist:*` and `global_strikes:*` keys are global (no prefix) so both Sentinel ML and the Auditor read/write the same ban state on a single Upstash Redis instance.
 
 ### RAG Policy Retrieval
 - HuggingFace MiniLM embeddings (local, no API calls)
@@ -158,7 +160,7 @@ cp api/.env.example api/.env
 docker-compose up --build
 ```
 
-The API runs at `http://localhost:8000`. Redis Commander is available at `http://localhost:8081` for state inspection.
+The API runs at `http://localhost:8000`.
 
 ## Environment Variables
 
@@ -168,8 +170,7 @@ The API runs at `http://localhost:8000`. Redis Commander is available at `http:/
 | `SUPABASE_KEY` | Supabase service role key |
 | `GROQ_API_KEY` | Groq API key for LLM inference |
 | `SUPABASE_WEBHOOK_SECRET` | Shared secret for webhook verification |
-| `REDIS_HOST` | Redis hostname (default: localhost) |
-| `REDIS_PORT` | Redis port (default: 6379) |
+| `REDIS_URL` | Upstash Redis connection string (`rediss://...`) |
 
 ## API Endpoints
 
@@ -185,5 +186,5 @@ The API runs at `http://localhost:8000`. Redis Commander is available at `http:/
 - **Inference**: Groq (Llama 3.1 8B, Llama 3.3 70B)
 - **Embeddings**: HuggingFace Transformers (MiniLM-L6-v2)
 - **Vector Store**: Supabase with pgvector extension
-- **State**: Redis 7 (Alpine)
+- **State**: Redis (Upstash, shared with Sentinel ML)
 - **Container**: Docker, Docker Compose
